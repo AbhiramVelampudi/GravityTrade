@@ -208,7 +208,13 @@ class PortfolioState:
 
     # Strategy-preference-based picks (Growth/Dividend/REIT/Value/Momentum)
     preference_recommendations: Dict[str, TradeRecommendation] = field(default_factory=dict)
-    
+
+    # Smart money signals (insider trades, options P/C, short squeeze, sector rotation)
+    smart_money_signals: Dict[str, Any] = field(default_factory=dict)
+
+    # User settings loaded from portfolio.json
+    settings: Dict[str, Any] = field(default_factory=dict)
+
     # Self-Evolving memory
     memory: PerformanceMemory = field(default_factory=PerformanceMemory)
     

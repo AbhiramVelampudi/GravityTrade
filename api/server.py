@@ -34,27 +34,38 @@ app = FastAPI(title="Antigravity Stock Intelligence", version="1.0.0")
 dashboard_path = Path(__file__).parent.parent / "dashboard"
 app.mount("/static", StaticFiles(directory=str(dashboard_path)), name="static")
 
-# WebSocket connection manager
+# WebSocket connection manager — bulletproof edition
 class ConnectionManager:
     def __init__(self):
         self.active: Set[WebSocket] = set()
-    
+        self._lock = asyncio.Lock()
+
     async def connect(self, ws: WebSocket):
         await ws.accept()
-        self.active.add(ws)
-    
-    def disconnect(self, ws: WebSocket):
-        self.active.discard(ws)
-    
+        async with self._lock:
+            self.active.add(ws)
+        logging.info(f"WS connected. Total: {len(self.active)}")
+
+    async def disconnect(self, ws: WebSocket):
+        async with self._lock:
+            self.active.discard(ws)
+        logging.info(f"WS disconnected. Total: {len(self.active)}")
+
     async def broadcast(self, message: str):
+        """Send to all clients; silently remove dead connections."""
+        if not self.active:
+            return
+        async with self._lock:
+            targets = set(self.active)
         dead = set()
-        for ws in self.active:
+        for ws in targets:
             try:
-                await ws.send_text(message)
+                await asyncio.wait_for(ws.send_text(message), timeout=3.0)
             except Exception:
                 dead.add(ws)
-        for ws in dead:
-            self.active.discard(ws)
+        if dead:
+            async with self._lock:
+                self.active -= dead
 
 manager = ConnectionManager()
 
@@ -114,6 +125,7 @@ def _serialize_state(state) -> dict:
             "recommendations":      clean(state.recommendations),
             "scan_recommendations": clean(state.scan_recommendations),
             "preference_recommendations": clean(state.preference_recommendations),
+            "smart_money_signals": clean(state.smart_money_signals),
             "agent_statuses":       clean(state.agent_statuses),
             "agent_logs": {
                 k: v[-5:] for k, v in state.agent_logs.items()
@@ -224,83 +236,99 @@ async def set_strategy(body: dict):
 async def run_analysis():
     """Trigger a fresh analysis run."""
     global _last_state, _is_running
-    
+
     if _is_running:
         return {"error": "Analysis already running"}
-    
+
     _is_running = True
-    
+    _broadcast_timestamps = {"last": 0.0}
+
     async def _run_and_broadcast():
         global _last_state, _is_running
         try:
             orchestrator = OrchestratorAgent(verbose=True)
-            
+
             async def broadcaster(msg: str):
+                """Throttled broadcaster — max 1 status_update per 200ms."""
+                import time as _time
+                try:
+                    parsed = json.loads(msg)
+                    if parsed.get("event") == "status_update":
+                        now = _time.monotonic()
+                        if now - _broadcast_timestamps["last"] < 0.2:
+                            return
+                        _broadcast_timestamps["last"] = now
+                except Exception:
+                    pass
                 await manager.broadcast(msg)
-            
+
             orchestrator.ws_broadcaster = broadcaster
-            
-            # Stream agent status updates every 0.5s
-            async def status_streamer():
-                while _is_running:
-                    await asyncio.sleep(0.5)
-                    if orchestrator.state:
-                        await manager.broadcast(json.dumps({
-                            "event": "status_update",
-                            "data": {
-                                "agent_statuses": orchestrator.state.agent_statuses,
-                                "agent_logs": {
-                                    k: v[-3:] for k, v in orchestrator.state.agent_logs.items()
-                                },
-                            }
-                        }))
-            
-            streamer_task = asyncio.create_task(status_streamer())
-            
             state = await orchestrator.run()
             _last_state = state
-            
-            streamer_task.cancel()
-            
-            # Send final results
+
+            # Final broadcast with full serialized state
             await manager.broadcast(json.dumps({
                 "event": "analysis_complete",
-                "data": _serialize_state(state),
+                "data":  _serialize_state(state),
             }))
         except Exception as e:
             logging.error(f"Analysis error: {e}", exc_info=True)
             await manager.broadcast(json.dumps({
                 "event": "error",
-                "data": {"message": str(e)}
+                "data":  {"message": str(e)},
             }))
         finally:
             _is_running = False
-    
+
     asyncio.create_task(_run_and_broadcast())
     return {"status": "Analysis started", "message": "Watch WebSocket for live updates"}
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    """WebSocket for live agent status streaming."""
+    """WebSocket — bulletproof with ping/pong heartbeat & graceful disconnect."""
     await manager.connect(ws)
+
+    async def _heartbeat():
+        """Send ping every 25s to keep connection alive through proxies/firewalls."""
+        while True:
+            try:
+                await asyncio.sleep(25)
+                await asyncio.wait_for(ws.send_text(json.dumps({"event": "ping"})), timeout=5)
+            except Exception:
+                break
+
+    heartbeat_task = asyncio.create_task(_heartbeat())
     try:
         # Send current state immediately on connect
         if _last_state:
             await ws.send_text(json.dumps({
                 "event": "initial_state",
-                "data": _serialize_state(_last_state),
+                "data":  _serialize_state(_last_state),
             }))
         else:
             await ws.send_text(json.dumps({
                 "event": "ready",
-                "data": {"message": "Connected. POST /api/analyze to start analysis."}
+                "data":  {"message": "🟢 Connected to Antigravity Intelligence. POST /api/analyze to start."},
             }))
-        
+
+        # Keep-alive loop: receive messages from client (pong / ignore)
         while True:
-            await ws.receive_text()  # Keep alive
+            try:
+                await asyncio.wait_for(ws.receive_text(), timeout=60)
+            except asyncio.TimeoutError:
+                # No message in 60s — send a ping to check if still alive
+                try:
+                    await asyncio.wait_for(ws.send_text(json.dumps({"event": "ping"})), timeout=5)
+                except Exception:
+                    break
     except WebSocketDisconnect:
-        manager.disconnect(ws)
+        pass
+    except Exception as e:
+        logging.debug(f"WS error: {e}")
+    finally:
+        heartbeat_task.cancel()
+        await manager.disconnect(ws)
 
 
 if __name__ == "__main__":

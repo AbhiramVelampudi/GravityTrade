@@ -23,6 +23,7 @@ from agents.time_precision_advisor import TimePrecisionAdvisorAgent
 from agents.portfolio_strategist   import PortfolioStrategistAgent
 from agents.stock_scanner          import StockScannerAgent
 from agents.preference_scanner     import PreferenceScannerAgent
+from agents.smart_money_agent      import SmartMoneyAgent
 
 logger = logging.getLogger("Orchestrator")
 
@@ -117,8 +118,9 @@ class OrchestratorAgent:
         fund    = FundamentalAnalysisAgent(self.state, self.verbose)
         sent    = SentimentAnalysisAgent(self.state, self.verbose)
         macro   = MacroIntelligenceAgent(self.state, self.verbose)
+        smart   = SmartMoneyAgent(self.state, self.verbose)
 
-        await self._run_parallel(ta, fund, sent, macro)
+        await self._run_parallel(ta, fund, sent, macro, smart)
         await self._broadcast("phase_done", {"phase": 2})
 
         # ── PHASE 3 ────────────────────────────────────────────────────

@@ -13,14 +13,15 @@ const AGENTS = [
   { num: '05', name: 'Fundamental',        key: 'FundamentalAnalysis' },
   { num: '06', name: 'Sentiment',          key: 'SentimentAnalysis' },
   { num: '07', name: 'Macro Intel',        key: 'MacroIntelligence' },
-  { num: '08', name: 'Bull Agent 🐂',      key: 'BullAgent' },
-  { num: '09', name: 'Bear Agent 🐻',      key: 'BearAgent' },
-  { num: '10', name: 'Pattern Recog.',     key: 'PatternRecognition' },
-  { num: '11', name: 'Stock Scanner 🔭',   key: 'StockScanner' },
-  { num: '12', name: 'Pref. Scanner 🎯',  key: 'PreferenceScanner' },
-  { num: '13', name: 'Risk Manager',       key: 'RiskManager' },
-  { num: '14', name: 'Time Advisor ⏰',    key: 'TimePrecisionAdvisor' },
-  { num: '15', name: 'Strategist 🏆',      key: 'PortfolioStrategist' },
+  { num: '08', name: 'Smart Money 🧠',     key: 'SmartMoney' },
+  { num: '09', name: 'Bull Agent 🐂',      key: 'BullAgent' },
+  { num: '10', name: 'Bear Agent 🐻',      key: 'BearAgent' },
+  { num: '11', name: 'Pattern Recog.',     key: 'PatternRecognition' },
+  { num: '12', name: 'Stock Scanner 🔭',   key: 'StockScanner' },
+  { num: '13', name: 'Pref. Scanner 🎯',  key: 'PreferenceScanner' },
+  { num: '14', name: 'Risk Manager',       key: 'RiskManager' },
+  { num: '15', name: 'Time Advisor ⏰',    key: 'TimePrecisionAdvisor' },
+  { num: '16', name: 'Strategist 🏆',      key: 'PortfolioStrategist' },
 ];
 
 const ACTION_COLORS = {
@@ -49,21 +50,61 @@ function buildAgentGrid() {
   `).join('');
 }
 
-// ── WebSocket ─────────────────────────────────────────────
+// ── WebSocket — bulletproof with exponential backoff ─────
+let _wsRetry = 0;
+let _wsAlive = true;
+
 function connectWebSocket() {
-  ws = new WebSocket(`ws://localhost:8080/ws`);
-  ws.onopen  = () => addLog('🟢 Connected to Antigravity Intelligence Server', 'success');
-  ws.onclose = () => { addLog('🔴 WebSocket disconnected. Reconnecting...', 'warning'); setTimeout(connectWebSocket, 3000); };
-  ws.onerror = () => addLog('⚠️ WebSocket error', 'error');
-  ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
+  _wsAlive = true;
+  ws = new WebSocket(`ws://${location.hostname}:8080/ws`);
+
+  ws.onopen = () => {
+    _wsRetry = 0;
+    addLog('🟢 Connected to Antigravity Intelligence Server', 'success');
+    updateConnIndicator(true);
+  };
+
+  ws.onclose = () => {
+    updateConnIndicator(false);
+    if (!_wsAlive) return;
+    const delay = Math.min(30000, 1000 * Math.pow(2, _wsRetry));
+    _wsRetry++;
+    addLog(`🔴 WebSocket closed. Reconnecting in ${(delay/1000).toFixed(0)}s... (attempt ${_wsRetry})`, 'warning');
+    setTimeout(connectWebSocket, delay);
+  };
+
+  ws.onerror = (e) => {
+    addLog('⚠️ WebSocket error — will auto-reconnect', 'error');
+  };
+
+  ws.onmessage = (e) => {
+    try { handleMessage(JSON.parse(e.data)); }
+    catch(err) { console.warn('WS parse error:', err); }
+  };
+}
+
+function updateConnIndicator(connected) {
+  let dot = document.getElementById('ws-indicator');
+  if (!dot) {
+    dot = document.createElement('span');
+    dot.id = 'ws-indicator';
+    dot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:8px;vertical-align:middle;transition:.3s';
+    document.querySelector('.logo')?.appendChild(dot);
+  }
+  dot.style.background = connected ? '#22c55e' : '#ef4444';
+  dot.title = connected ? 'WebSocket Connected' : 'WebSocket Disconnected';
 }
 
 function handleMessage(msg) {
   const { event, data } = msg;
+  if (event === 'ping') {
+    // Respond with pong to confirm we're alive
+    try { ws.send(JSON.stringify({ event: 'pong' })); } catch(_) {}
+    return;
+  }
   if (event === 'ready') {
     addLog(data.message, 'info');
   } else if (event === 'status_update') {
-    // FIX: update agent cards on EVERY status push (this is now called after each agent)
     updateAgentStatuses(data.agent_statuses);
     if (data.agent_logs) streamLogs(data.agent_logs);
   } else if (event === 'phase_start') {
@@ -76,7 +117,7 @@ function handleMessage(msg) {
     renderFullDashboard(data);
     document.getElementById('run-btn').disabled = false;
     document.getElementById('run-btn').querySelector('span:last-child').textContent = 'Run Again';
-    addLog(`🏆 ANALYSIS COMPLETE — All 15 agents finished!`, 'success');
+    addLog('🏆 ANALYSIS COMPLETE — All 16 agents finished!', 'success');
   } else if (event === 'initial_state') {
     lastState = data;
     if (data.agent_statuses) updateAgentStatuses(data.agent_statuses);
