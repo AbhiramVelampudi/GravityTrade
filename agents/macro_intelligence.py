@@ -85,6 +85,7 @@ class MacroIntelligenceAgent(BaseAgent):
             yield_2y=yield_2y,
             yield_curve_spread=ycurve,
             sp500_trend=sp_trend,
+            sp500_current=sp500_curr,
             dollar_index=dollar_idx,
             macro_score=round(macro_score, 1),
             macro_signal=self._macro_signal(macro_score),

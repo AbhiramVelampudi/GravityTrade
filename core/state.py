@@ -109,6 +109,7 @@ class MacroData:
     yield_2y: Optional[float] = None
     yield_curve_spread: Optional[float] = None  # 10Y - 2Y
     sp500_trend: Optional[str] = None           # UP | DOWN | SIDEWAYS
+    sp500_current: Optional[float] = None
     vix: Optional[float] = None
     dollar_index: Optional[float] = None
     macro_score: Optional[float] = None         # 0-100 market health
