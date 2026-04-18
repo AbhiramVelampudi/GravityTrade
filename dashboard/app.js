@@ -1,4 +1,4 @@
-/* ── app.js: Antigravity Dashboard Logic ── */
+/* ── app.js: GravityTrade Dashboard Logic ── */
 'use strict';
 
 const API = 'http://localhost:8080';
@@ -60,7 +60,7 @@ function connectWebSocket() {
 
   ws.onopen = () => {
     _wsRetry = 0;
-    addLog('🟢 Connected to Antigravity Intelligence Server', 'success');
+    addLog('🟢 Connected to GravityTrade Intelligence Server', 'success');
     updateConnIndicator(true);
   };
 

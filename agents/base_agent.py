@@ -13,7 +13,7 @@ from core.mcp_tools import get_registry
 
 
 class BaseAgent(ABC):
-    """Base class for all Antigravity portfolio agents."""
+    """Base class for all GravityTrade portfolio agents."""
 
     name: str = "BaseAgent"
     description: str = ""

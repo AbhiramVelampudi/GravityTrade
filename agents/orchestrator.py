@@ -29,7 +29,7 @@ logger = logging.getLogger("Orchestrator")
 
 
 class OrchestratorAgent:
-    """Master coordinator for all 14 Antigravity portfolio agents."""
+    """Master coordinator for all 14 GravityTrade portfolio agents."""
 
     name = "Orchestrator"
 
@@ -113,7 +113,7 @@ class OrchestratorAgent:
         PHASE 4 (Sequential): RiskManager → TimePrecision → Strategist
         """
         self._set_status("RUNNING")
-        self.log("🚀 ANTIGRAVITY STOCK INTELLIGENCE SYSTEM — INITIATING")
+        self.log("🚀 GRAVITYTRADE STOCK INTELLIGENCE SYSTEM — INITIATING")
         self.log("=" * 60)
         start = datetime.now()
 
