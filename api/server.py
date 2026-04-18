@@ -51,7 +51,7 @@ class ConnectionManager:
             self.active.discard(ws)
         logging.info(f"WS disconnected. Total: {len(self.active)}")
 
-    async def broadcast(self, message: str):
+    async def broadcast(self, message: str, timeout: float = 5.0):
         """Send to all clients; silently remove dead connections."""
         if not self.active:
             return
@@ -60,7 +60,7 @@ class ConnectionManager:
         dead = set()
         for ws in targets:
             try:
-                await asyncio.wait_for(ws.send_text(message), timeout=3.0)
+                await asyncio.wait_for(ws.send_text(message), timeout=timeout)
             except Exception:
                 dead.add(ws)
         if dead:
@@ -266,11 +266,14 @@ async def run_analysis():
             state = await orchestrator.run()
             _last_state = state
 
-            # Final broadcast with full serialized state
-            await manager.broadcast(json.dumps({
-                "event": "analysis_complete",
-                "data":  _serialize_state(state),
-            }))
+            # Slim final payload: strip raw agent_logs (already streamed live)
+            # Use 30s timeout for the large final state payload
+            final_state = _serialize_state(state)
+            final_state.pop("agent_logs", None)   # already streamed; don't resend
+            await manager.broadcast(
+                json.dumps({"event": "analysis_complete", "data": final_state}),
+                timeout=30.0,
+            )
         except Exception as e:
             logging.error(f"Analysis error: {e}", exc_info=True)
             await manager.broadcast(json.dumps({

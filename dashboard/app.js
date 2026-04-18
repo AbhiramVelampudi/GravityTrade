@@ -135,7 +135,7 @@ async function startAnalysis() {
   btn.querySelector('span:last-child').textContent = 'Analyzing...';
   clearLog();
   resetAgentCards();
-  addLog('🚀 Launching 15-agent analysis pipeline...', 'success');
+  addLog('🚀 Launching 16-agent analysis pipeline...', 'success');
   addLog(`🎯 Strategy: ${currentStrategy}`, 'info');
   try {
     const resp = await fetch(`${API}/api/analyze`, { method: 'POST' });
@@ -183,8 +183,12 @@ function resetAgentCards() {
   });
 }
 
-// ── Log Terminal ──────────────────────────────────────────
+// ── Log Terminal ─────────────────────────────────────
+const _seenLogs = new Set();   // dedup guard — tracks every line ever shown
+
 function addLog(msg, level = 'info') {
+  if (_seenLogs.has(msg)) return;   // skip duplicate
+  _seenLogs.add(msg);
   const terminal = document.getElementById('log-terminal');
   const ph = terminal.querySelector('.log-placeholder');
   if (ph) ph.remove();
@@ -194,11 +198,20 @@ function addLog(msg, level = 'info') {
   terminal.appendChild(div);
   terminal.scrollTop = terminal.scrollHeight;
 }
-function clearLog() { document.getElementById('log-terminal').innerHTML = ''; }
+
+function clearLog() {
+  _seenLogs.clear();    // reset dedup so next run starts fresh
+  document.getElementById('log-terminal').innerHTML = '';
+}
+
 function streamLogs(agentLogs) {
   for (const [, lines] of Object.entries(agentLogs)) {
     lines.forEach(line => {
-      const lvl = line.includes('✅') ? 'success' : line.includes('⚠️') ? 'warning' : line.includes('❌') ? 'error' : 'info';
+      if (!line || _seenLogs.has(line)) return;   // skip blanks + already-shown
+      const lvl = line.includes('\u2705') ? 'success'
+                : line.includes('\u26a0')  ? 'warning'
+                : line.includes('\u274c')  ? 'error'
+                : 'info';
       addLog(line, lvl);
     });
   }
@@ -217,7 +230,7 @@ function renderFullDashboard(data) {
   renderSentiment(data);
 
   ['portfolio-section','macro-section','recs-section','scanner-section',
-   'debate-section','risk-section','sentiment-section'].forEach(id => {
+   'preference-section','debate-section','risk-section','sentiment-section'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.style.display = 'block'; el.classList.add('animate-in'); }
   });
