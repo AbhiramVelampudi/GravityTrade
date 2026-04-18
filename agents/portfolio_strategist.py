@@ -129,6 +129,18 @@ class PortfolioStrategistAgent(BaseAgent):
         lines = [f"Action: {action} | Composite Score: {composite:.0f}/100"]
         lines.append("")
         
+        # Non-finance guy friendly hype summary
+        hype_map = {
+            "BUY": "🔥 PEAK SUGGESTION: Massive profit potential detected! The stars are aligning—strong fundamentals and smart money buying. TIME TO LOAD UP!",
+            "ADD": "🚀 MOMENTUM BUILDING: This winner keeps winning. The data screams higher highs. Add more to your bag and ride the wave!",
+            "HOLD": "💎 DIAMOND HANDS: Nothing broke, so don't fix it. The trend is stable and patience pays. Just sit tight and let the money work for you.",
+            "WATCH": "👀 ON THE RADAR: It's brewing, but not quite ready to explode. Keep it on your watchlist—when it pops, you'll be the first to know.",
+            "TRIM": "💰 LOCK IN GAINS: Nobody ever went broke taking profits! The chart is getting exhausted. Secure the bag and take some chips off the table.",
+            "SELL": "🚨 DUMP IT: The smart money has left the building. Fundamentals are cracking and the trend is dead. Cut it loose before it burns your portfolio!"
+        }
+        lines.append(hype_map.get(action, ""))
+        lines.append("")
+        
         # TA summary
         if ta:
             rsi_s = f"{ta.rsi_14:.1f}" if ta.rsi_14 is not None else "N/A"
