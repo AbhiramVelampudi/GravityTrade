@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# API keys / secrets — NEVER commit these
+.env
+*.env
+secrets.json
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Prompts repo (submodule / cloned externally)
+prompts_repo/
+
+# Temp / cache
+*.tmp
+.cache/
+
+# Data — keep portfolio structure but no personal data if desired
+# Uncomment to exclude: data/portfolio.json

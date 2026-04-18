@@ -1,0 +1,60 @@
+{
+  "portfolio": [
+    {
+      "ticker": "NVDA",
+      "name": "NVIDIA Corporation",
+      "shares": 1.290189,
+      "avg_buy_price": 184.65,
+      "sector": "Technology",
+      "currency": "USD"
+    },
+    {
+      "ticker": "MSFT",
+      "name": "Microsoft Corporation",
+      "shares": 0.580567,
+      "avg_buy_price": 370.95,
+      "sector": "Technology",
+      "currency": "USD"
+    },
+    {
+      "ticker": "MSTR",
+      "name": "MicroStratergy Incorporated",
+      "shares": 0.829066,
+      "avg_buy_price": 128.55,
+      "sector": "Consumer Discretionary",
+      "currency": "USD"
+    },
+    {
+      "ticker": "NFLX",
+      "name": "Netflix Inc",
+      "shares": 1,
+      "avg_buy_price": 83.77,
+      "sector": "Consumer Discretionary",
+      "currency": "USD"
+    },
+    {
+      "ticker": "VOO",
+      "name": "Vanguard s & p500 etf",
+      "shares": 0.122012,
+      "avg_buy_price": 636.9,
+      "sector": "Technology",
+      "currency": "USD"
+    },
+    {
+      "ticker": "POET",
+      "name": "POET Technologies Inc",
+      "shares": 4.555102,
+      "avg_buy_price": 6.17,
+      "sector": "Technology",
+      "currency": "USD"
+    }
+  ],
+  "settings": {
+    "risk_tolerance": "moderate",
+    "investment_horizon": "medium_term",
+    "max_position_size_pct": 25,
+    "stop_loss_pct": 8,
+    "take_profit_pct": 20,
+    "strategy": "ALL"
+  }
+}
