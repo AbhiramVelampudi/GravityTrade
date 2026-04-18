@@ -255,7 +255,9 @@ async def get_portfolio():
 async def save_portfolio(body: dict):
     """Save updated portfolio holdings to portfolio.json."""
     pf = Path(__file__).parent.parent / "data" / "portfolio.json"
-    required = {"ticker", "name", "shares", "avg_buy_price", "sector"}
+    required = {"ticker", "shares", "avg_buy_price"}
+    
+    holdings = []
     for h in body.get("portfolio", []):
         missing = required - set(h.keys())
         if missing:
@@ -264,9 +266,36 @@ async def save_portfolio(body: dict):
             return {"error": f"Shares must be > 0 for {h['ticker']}"}
         if float(h["avg_buy_price"]) <= 0:
             return {"error": f"avg_buy_price must be > 0 for {h['ticker']}"}
+            
+        ticker = h["ticker"]
+        name = h.get("name")
+        sector = h.get("sector")
+        
+        if not name or not sector or name == "New Stock":
+            try:
+                def fetch_info(t):
+                    import yfinance as yf
+                    return yf.Ticker(t).info
+                info = await asyncio.to_thread(fetch_info, ticker)
+                name = info.get("shortName") or info.get("longName") or ticker
+                sector = info.get("sector") or "Unknown"
+            except Exception:
+                name = ticker
+                sector = "Unknown"
+                
+        holdings.append({
+            "ticker": ticker,
+            "name": name,
+            "shares": float(h["shares"]),
+            "avg_buy_price": float(h["avg_buy_price"]),
+            "sector": sector,
+            "currency": h.get("currency", "USD")
+        })
+        
+    body["portfolio"] = holdings
     with open(pf, "w") as f:
         json.dump(body, f, indent=2)
-    return {"status": "saved", "holdings": len(body.get("portfolio", [])), "timestamp": datetime.now().isoformat()}
+    return {"status": "saved", "holdings": len(holdings), "timestamp": datetime.now().isoformat()}
 
 
 @app.post("/api/strategy")

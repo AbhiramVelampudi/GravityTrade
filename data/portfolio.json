@@ -3,49 +3,25 @@
     {
       "ticker": "NVDA",
       "name": "NVIDIA Corporation",
-      "shares": 1.290189,
-      "avg_buy_price": 184.65,
+      "shares": 1.527678,
+      "avg_buy_price": 180.7,
       "sector": "Technology",
       "currency": "USD"
     },
     {
-      "ticker": "MSFT",
-      "name": "Microsoft Corporation",
-      "shares": 0.580567,
-      "avg_buy_price": 370.95,
-      "sector": "Technology",
+      "ticker": "IMRX",
+      "name": "Immuneering Corporation",
+      "shares": 17.921418,
+      "avg_buy_price": 5.56,
+      "sector": "Healthcare",
       "currency": "USD"
     },
     {
-      "ticker": "MSTR",
-      "name": "MicroStratergy Incorporated",
-      "shares": 0.829066,
-      "avg_buy_price": 128.55,
-      "sector": "Consumer Discretionary",
-      "currency": "USD"
-    },
-    {
-      "ticker": "NFLX",
-      "name": "Netflix Inc",
-      "shares": 1,
-      "avg_buy_price": 83.77,
-      "sector": "Consumer Discretionary",
-      "currency": "USD"
-    },
-    {
-      "ticker": "VOO",
-      "name": "Vanguard s & p500 etf",
-      "shares": 0.122012,
-      "avg_buy_price": 636.9,
-      "sector": "Technology",
-      "currency": "USD"
-    },
-    {
-      "ticker": "POET",
-      "name": "POET Technologies Inc",
-      "shares": 4.555102,
-      "avg_buy_price": 6.17,
-      "sector": "Technology",
+      "ticker": "AMZN",
+      "name": "Amazon.com, Inc.",
+      "shares": 0.014251,
+      "avg_buy_price": 210.51,
+      "sector": "Consumer Cyclical",
       "currency": "USD"
     }
   ],

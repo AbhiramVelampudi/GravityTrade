@@ -584,24 +584,19 @@ function closePortfolioEditor() {
 }
 
 function renderPortfolioTable(holdings) {
-  const sectors = ['Technology','Healthcare','Financials','Consumer Discretionary',
-    'Communication Services','Energy','Utilities','Real Estate','Industrial',
-    'Consumer Staples','Materials'];
   const tbody = document.getElementById('portfolio-edit-body');
   tbody.innerHTML = holdings.map((h, i) => `
     <tr id="row-${i}">
-      <td><input class="tbl-input" value="${h.ticker}" id="h-ticker-${i}" style="width:70px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></td>
-      <td><input class="tbl-input" value="${h.name}" id="h-name-${i}" style="width:160px"></td>
-      <td><input class="tbl-input" type="number" value="${h.shares}" id="h-shares-${i}" style="width:70px" min="0.0001" step="0.0001"></td>
-      <td><input class="tbl-input" type="number" value="${h.avg_buy_price}" id="h-price-${i}" style="width:90px" min="0.01" step="0.01"></td>
-      <td><select class="tbl-input" id="h-sector-${i}" style="width:160px">${sectors.map(s=>`<option${s===h.sector?' selected':''}>${s}</option>`).join('')}</select></td>
+      <td><input class="tbl-input" value="${h.ticker}" id="h-ticker-${i}" style="width:100px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></td>
+      <td><input class="tbl-input" type="number" value="${h.shares}" id="h-shares-${i}" style="width:100px" min="0.0001" step="0.0001"></td>
+      <td><input class="tbl-input" type="number" value="${h.avg_buy_price}" id="h-price-${i}" style="width:120px" min="0.01" step="0.01"></td>
       <td><button class="btn-del" onclick="deletePortfolioRow(${i})" title="Remove">🗑</button></td>
     </tr>`).join('');
 }
 
 function addPortfolioRow() {
   if (!_portfolioData) _portfolioData = { portfolio: [], settings: {} };
-  _portfolioData.portfolio.push({ ticker:'', name:'New Stock', shares:1, avg_buy_price:100, sector:'Technology', currency:'USD' });
+  _portfolioData.portfolio.push({ ticker:'', shares:1, avg_buy_price:100, currency:'USD' });
   renderPortfolioTable(_portfolioData.portfolio);
   document.getElementById('portfolio-edit-body').lastElementChild?.scrollIntoView({ behavior:'smooth' });
 }
@@ -618,14 +613,25 @@ async function savePortfolio() {
   const holdings = [];
   const msg = document.getElementById('portfolio-save-msg');
 
+  msg.textContent = 'Saving... (Fetching dynamic company data)';
+  msg.style.color = '#eab308'; // yellow
+
   for (const row of rows) {
     const i      = row.id.split('-')[1];
     const ticker = document.getElementById(`h-ticker-${i}`)?.value?.trim().toUpperCase();
-    const name   = document.getElementById(`h-name-${i}`)?.value?.trim();
     const shares = parseFloat(document.getElementById(`h-shares-${i}`)?.value);
     const price  = parseFloat(document.getElementById(`h-price-${i}`)?.value);
-    const sector = document.getElementById(`h-sector-${i}`)?.value;
-    if (!ticker || !name || !shares || !price) { msg.textContent = `❌ Fill all fields for ${ticker||'new row'}`; return; }
+    if (!ticker || !shares || !price) { msg.style.color = '#ef4444'; msg.textContent = `❌ Fill all fields for ${ticker||'new row'}`; return; }
+    
+    let name = _portfolioData.portfolio[i]?.name || '';
+    let sector = _portfolioData.portfolio[i]?.sector || '';
+    const origTicker = _portfolioData.portfolio[i]?.ticker;
+    
+    if (ticker !== origTicker) {
+      name = '';
+      sector = '';
+    }
+    
     holdings.push({ ticker, name, shares, avg_buy_price: price, sector, currency:'USD' });
   }
 
@@ -637,11 +643,12 @@ async function savePortfolio() {
       body: JSON.stringify(payload),
     });
     const result = await resp.json();
-    if (result.error) { msg.textContent = `❌ ${result.error}`; }
+    if (result.error) { msg.style.color = '#ef4444'; msg.textContent = `❌ ${result.error}`; }
     else {
+      msg.style.color = '#22c55e';
       msg.textContent = `✅ Saved ${result.holdings} holdings — run analysis to update`;
       _portfolioData = payload;
       setTimeout(closePortfolioEditor, 1500);
     }
-  } catch (e) { msg.textContent = `❌ Save failed: ${e.message}`; }
+  } catch (e) { msg.style.color = '#ef4444'; msg.textContent = `❌ Save failed: ${e.message}`; }
 }
