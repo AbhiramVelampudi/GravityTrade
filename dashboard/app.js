@@ -37,7 +37,21 @@ document.addEventListener('DOMContentLoaded', () => {
   connectWebSocket();
   checkStatus();
   loadStrategyFromServer();
+  
+  const savedKey = localStorage.getItem('gemini_api_key');
+  if (savedKey) {
+    document.getElementById('gemini-api-key').value = savedKey;
+  }
 });
+
+function saveApiKey() {
+  const key = document.getElementById('gemini-api-key').value.trim();
+  if (key) {
+    localStorage.setItem('gemini_api_key', key);
+    document.getElementById('key-saved-msg').classList.add('show');
+    setTimeout(() => document.getElementById('key-saved-msg').classList.remove('show'), 2000);
+  }
+}
 
 function buildAgentGrid() {
   const grid = document.getElementById('agent-grid');
@@ -102,6 +116,14 @@ function handleMessage(msg) {
     try { ws.send(JSON.stringify({ event: 'pong' })); } catch(_) {}
     return;
   }
+  if (event === 'rate_limit') {
+    const el = document.getElementById('hdr-engine');
+    if (el) {
+      el.textContent = `Gemini | ${data.rpm || 0}/15 RPM | ${data.tpm || 0} TPM`;
+      el.style.color = '#4ade80'; 
+    }
+    return;
+  }
   if (event === 'ready') {
     addLog(data.message, 'info');
   } else if (event === 'status_update') {
@@ -137,8 +159,13 @@ async function startAnalysis() {
   resetAgentCards();
   addLog('🚀 Launching 16-agent analysis pipeline...', 'success');
   addLog(`🎯 Strategy: ${currentStrategy}`, 'info');
+  const apiKey = localStorage.getItem('gemini_api_key') || '';
   try {
-    const resp = await fetch(`${API}/api/analyze`, { method: 'POST' });
+    const resp = await fetch(`${API}/api/analyze`, { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey })
+    });
     const json = await resp.json();
     if (json.error) { addLog(`❌ ${json.error}`, 'error'); btn.disabled = false; }
     else addLog(`📡 ${json.message}`, 'info');
@@ -248,6 +275,19 @@ function renderHeader(data) {
   if (pnlEl && pnl != null) {
     pnlEl.textContent = `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%`;
     pnlEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+  
+  const rpm = data.settings?.gemini_rpm || 0;
+  const apiKey = localStorage.getItem('gemini_api_key');
+  const engineEl = document.getElementById('hdr-engine');
+  if (engineEl) {
+    if (apiKey) {
+      engineEl.textContent = `Gemini | ${rpm}/15 RPM`;
+      engineEl.style.color = '#c4b5fd';
+    } else {
+      engineEl.textContent = 'AWAITING KEY';
+      engineEl.style.color = '#c4b5fd';
+    }
   }
   setText('hdr-vix', vix ? vix.toFixed(1) : '—');
   const macroEl = document.getElementById('hdr-macro');

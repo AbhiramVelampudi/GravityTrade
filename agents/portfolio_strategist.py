@@ -5,9 +5,16 @@ This is the decision engine. It weighs the bull vs bear debate, risk constraints
 technical signals, fundamentals, sentiment, and timing to produce peak decisions.
 """
 import asyncio
+import json
 from datetime import datetime
 from agents.base_agent import BaseAgent
 from core.state import TradeRecommendation
+
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
 
 
 class PortfolioStrategistAgent(BaseAgent):
@@ -207,13 +214,43 @@ class PortfolioStrategistAgent(BaseAgent):
             holding_pnl_pct = holding.unrealized_pnl_pct or 0
             action = self._action_from_score(composite, holding_pnl_pct, urgency)
             
-            # Confidence from composite score
             confidence = composite / 100
             if action in ("SELL", "TRIM"):
                 confidence = round(1.0 - composite / 100, 3)
             
             reasoning = self._build_reasoning(ticker, action, composite, scores)
             
+            api_key = self.state.settings.get("gemini_api_key", "").strip()
+            if api_key and genai:
+                try:
+                    client = genai.Client(api_key=api_key)
+                    prompt = f"""
+You are a top-tier BlackRock portfolio strategist using the fuck-coding prompts.
+Given the following algorithmic analysis, rewrite the summary into a highly persuasive, non-finance guy friendly "HYPE" recommendation for {ticker}. Focus on peak profit potential or risk management.
+Do NOT output any markdown blocks, just the text. Keep it under 4 sentences.
+
+Algorithmic Baseline:
+{reasoning}
+"""
+                    self.log(f"  🤖 Querying Gemini 1.5 Flash for {ticker}...")
+                    response = client.models.generate_content(
+                        model="gemini-1.5-flash",
+                        contents=prompt,
+                    )
+                    if response.text:
+                        # Replace hype string with actual LLM output
+                        reasoning = f"🤖 AI HYPE: {response.text.strip()}\n\n" + reasoning
+                        
+                        # Mock RPM tracking for demo purposes (usually you get this from headers)
+                        rpm = self.state.settings.get("gemini_rpm", 0) + 1
+                        self.state.settings["gemini_rpm"] = rpm
+                        
+                        # Tell orchestrator to broadcast rate limit
+                        if hasattr(self, "state") and hasattr(self, "_broadcast"):
+                            asyncio.create_task(self._broadcast("rate_limit", {"rpm": rpm, "tpm": len(prompt) // 4 + len(response.text) // 4}))
+                except Exception as e:
+                    self.log(f"  ❌ LLM failed: {e}")
+
             risk = self.state.risk_metrics.get(ticker)
             stop_loss = risk.stop_loss_price if risk else round(current_price * 0.92, 2)
             take_profit = risk.take_profit_price if risk else round(current_price * 1.20, 2)

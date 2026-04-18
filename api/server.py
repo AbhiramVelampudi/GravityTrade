@@ -316,7 +316,7 @@ async def set_strategy(body: dict):
 
 
 @app.post("/api/analyze")
-async def run_analysis():
+async def run_analysis(body: dict = None):
     """Trigger a fresh analysis run."""
     global _last_state, _is_running
 
@@ -329,7 +329,8 @@ async def run_analysis():
     async def _run_and_broadcast():
         global _last_state, _is_running
         try:
-            orchestrator = OrchestratorAgent(verbose=True)
+            api_key = body.get("api_key", "") if body else ""
+            orchestrator = OrchestratorAgent(verbose=True, api_key=api_key)
 
             async def broadcaster(msg: str):
                 """Throttled broadcaster — max 1 status_update per 200ms.

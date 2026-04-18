@@ -33,9 +33,10 @@ class OrchestratorAgent:
 
     name = "Orchestrator"
 
-    def __init__(self, verbose: bool = True):
+    def __init__(self, verbose: bool = True, api_key: str = ""):
         self.verbose  = verbose
         self.state    = PortfolioState()
+        self.state.settings["gemini_api_key"] = api_key
         self.state.agent_statuses["Orchestrator"] = "IDLE"
         self.state.agent_logs["Orchestrator"]     = []
         self.ws_broadcaster = None   # Set by server for live WebSocket streaming
