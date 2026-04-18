@@ -246,10 +246,18 @@ Algorithmic Baseline:
                         self.state.settings["gemini_rpm"] = rpm
                         
                         # Tell orchestrator to broadcast rate limit
-                        if hasattr(self, "state") and hasattr(self, "_broadcast"):
-                            asyncio.create_task(self._broadcast("rate_limit", {"rpm": rpm, "tpm": len(prompt) // 4 + len(response.text) // 4}))
+                        broadcast_fn = self.state.settings.get("broadcast_fn")
+                        if broadcast_fn:
+                            asyncio.create_task(broadcast_fn("rate_limit", {"rpm": rpm, "tpm": len(prompt) // 4 + len(response.text) // 4, "error": False}))
                 except Exception as e:
-                    self.log(f"  ❌ LLM failed: {e}")
+                    err_msg = str(e).lower()
+                    if "429" in err_msg or "quota" in err_msg or "exhausted" in err_msg or "rate limit" in err_msg:
+                        self.log(f"  ❌ LLM Rate Limit Hit: {e}")
+                        broadcast_fn = self.state.settings.get("broadcast_fn")
+                        if broadcast_fn:
+                            asyncio.create_task(broadcast_fn("rate_limit", {"rpm": 15, "tpm": 0, "error": True}))
+                    else:
+                        self.log(f"  ❌ LLM failed: {e}")
 
             risk = self.state.risk_metrics.get(ticker)
             stop_loss = risk.stop_loss_price if risk else round(current_price * 0.92, 2)

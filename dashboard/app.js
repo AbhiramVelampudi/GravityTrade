@@ -119,8 +119,13 @@ function handleMessage(msg) {
   if (event === 'rate_limit') {
     const el = document.getElementById('hdr-engine');
     if (el) {
-      el.textContent = `Gemini | ${data.rpm || 0}/15 RPM | ${data.tpm || 0} TPM`;
-      el.style.color = '#4ade80'; 
+      if (data.error) {
+        el.textContent = `Gemini | LIMIT REACHED`;
+        el.style.color = '#ef4444'; // Red
+      } else {
+        el.textContent = `Gemini | ${data.rpm || 0}/15 RPM | ${data.tpm || 0} TPM`;
+        el.style.color = '#4ade80'; // Green
+      }
     }
     return;
   }
