@@ -51,8 +51,12 @@ class ConnectionManager:
             self.active.discard(ws)
         logging.info(f"WS disconnected. Total: {len(self.active)}")
 
-    async def broadcast(self, message: str, timeout: float = 5.0):
-        """Send to all clients; silently remove dead connections."""
+    async def broadcast(self, message: str):
+        """Send to all clients; silently remove dead connections.
+        NOTE: Do NOT wrap ws.send_text in asyncio.wait_for — cancelling a
+        mid-send WebSocket coroutine corrupts the frame and causes phantom
+        client disconnects. Plain await + except is the correct pattern.
+        """
         if not self.active:
             return
         async with self._lock:
@@ -60,7 +64,7 @@ class ConnectionManager:
         dead = set()
         for ws in targets:
             try:
-                await asyncio.wait_for(ws.send_text(message), timeout=timeout)
+                await ws.send_text(message)
             except Exception:
                 dead.add(ws)
         if dead:
@@ -266,13 +270,10 @@ async def run_analysis():
             state = await orchestrator.run()
             _last_state = state
 
-            # Slim final payload: strip raw agent_logs (already streamed live)
-            # Use 30s timeout for the large final state payload
             final_state = _serialize_state(state)
-            final_state.pop("agent_logs", None)   # already streamed; don't resend
+            final_state.pop("agent_logs", None)
             await manager.broadcast(
-                json.dumps({"event": "analysis_complete", "data": final_state}),
-                timeout=30.0,
+                json.dumps({"event": "analysis_complete", "data": final_state})
             )
         except Exception as e:
             logging.error(f"Analysis error: {e}", exc_info=True)
@@ -293,17 +294,16 @@ async def websocket_endpoint(ws: WebSocket):
     await manager.connect(ws)
 
     async def _heartbeat():
-        """Send ping every 25s to keep connection alive through proxies/firewalls."""
+        """Send ping every 25s to keep alive through proxies/firewalls."""
         while True:
             try:
                 await asyncio.sleep(25)
-                await asyncio.wait_for(ws.send_text(json.dumps({"event": "ping"})), timeout=5)
+                await ws.send_text(json.dumps({"event": "ping"}))  # plain await — no wait_for
             except Exception:
                 break
 
     heartbeat_task = asyncio.create_task(_heartbeat())
     try:
-        # Send current state immediately on connect
         if _last_state:
             await ws.send_text(json.dumps({
                 "event": "initial_state",
@@ -315,14 +315,13 @@ async def websocket_endpoint(ws: WebSocket):
                 "data":  {"message": "🟢 Connected to Antigravity Intelligence. POST /api/analyze to start."},
             }))
 
-        # Keep-alive loop: receive messages from client (pong / ignore)
+        # Keep-alive receive loop — wait_for on receive is safe (no send corruption)
         while True:
             try:
                 await asyncio.wait_for(ws.receive_text(), timeout=60)
             except asyncio.TimeoutError:
-                # No message in 60s — send a ping to check if still alive
                 try:
-                    await asyncio.wait_for(ws.send_text(json.dumps({"event": "ping"})), timeout=5)
+                    await ws.send_text(json.dumps({"event": "ping"}))  # plain await
                 except Exception:
                     break
     except WebSocketDisconnect:
