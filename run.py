@@ -1,5 +1,5 @@
 """
-run.py — Entry point for Antigravity Stock Intelligence System
+run.py — Entry point for GravityTrade Stock Intelligence System
 Usage:
   python run.py          → Start the full server + dashboard
   python run.py --cli    → Run analysis in CLI-only mode (no web server)
@@ -23,7 +23,7 @@ def run_server():
     """Start the FastAPI web server."""
     import uvicorn
     print("\n" + "="*60)
-    print("  [*]  ANTIGRAVITY STOCK INTELLIGENCE SYSTEM")
+    print("  [*]  GRAVITYTRADE STOCK INTELLIGENCE SYSTEM")
     print("  [16] Agent MCP Portfolio Analyzer")
     print("="*60)
     print(f"\n  Dashboard: http://localhost:8080")
@@ -49,7 +49,7 @@ async def run_cli():
     import json
 
     print("\n" + "="*60)
-    print("  ⚡  ANTIGRAVITY — CLI MODE")
+    print("  ⚡  GRAVITYTRADE — CLI MODE")
     print("="*60 + "\n")
 
     orchestrator = OrchestratorAgent(verbose=True)

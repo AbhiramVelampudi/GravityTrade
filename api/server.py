@@ -28,7 +28,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S"
 )
 
-app = FastAPI(title="Antigravity Stock Intelligence", version="1.0.0")
+app = FastAPI(title="GravityTrade Stock Intelligence", version="1.0.0")
 
 # Mount dashboard static files
 dashboard_path = Path(__file__).parent.parent / "dashboard"
@@ -396,7 +396,7 @@ async def websocket_endpoint(ws: WebSocket):
         else:
             conn.enqueue(json.dumps({
                 "event": "ready",
-                "data":  {"message": "🟢 Connected to Antigravity Intelligence. POST /api/analyze to start."},
+                "data":  {"message": "🟢 Connected to GravityTrade Intelligence. POST /api/analyze to start."},
             }))
 
         # Pure receive loop — we only receive here, never send directly
