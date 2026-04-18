@@ -34,42 +34,70 @@ app = FastAPI(title="Antigravity Stock Intelligence", version="1.0.0")
 dashboard_path = Path(__file__).parent.parent / "dashboard"
 app.mount("/static", StaticFiles(directory=str(dashboard_path)), name="static")
 
-# WebSocket connection manager — bulletproof edition
+# Per-connection wrapper with a dedicated sender task
+class WSConn:
+    """Each WebSocket gets its own queue + sender coroutine.
+    This is the ONLY correct way to send from multiple coroutines to the same WS.
+    Concurrent ws.send_text() calls corrupt the WebSocket frame stream.
+    """
+    _STOP = object()  # sentinel
+
+    def __init__(self, ws: WebSocket):
+        self.ws   = ws
+        self.q    = asyncio.Queue(maxsize=256)
+        self.task = asyncio.ensure_future(self._drain())
+
+    async def _drain(self):
+        while True:
+            msg = await self.q.get()
+            if msg is self._STOP:
+                break
+            try:
+                await self.ws.send_text(msg)
+            except Exception:
+                break  # connection gone — stop draining
+
+    def enqueue(self, msg: str):
+        try:
+            self.q.put_nowait(msg)
+        except asyncio.QueueFull:
+            pass  # drop if backlogged (never block the caller)
+
+    async def stop(self):
+        try:
+            self.q.put_nowait(self._STOP)
+        except asyncio.QueueFull:
+            pass
+        self.task.cancel()
+
+
 class ConnectionManager:
     def __init__(self):
-        self.active: Set[WebSocket] = set()
+        self._conns: dict = {}   # WebSocket → WSConn
         self._lock = asyncio.Lock()
 
     async def connect(self, ws: WebSocket):
         await ws.accept()
+        conn = WSConn(ws)
         async with self._lock:
-            self.active.add(ws)
-        logging.info(f"WS connected. Total: {len(self.active)}")
+            self._conns[ws] = conn
+        logging.info(f"WS connected. Total: {len(self._conns)}")
+        return conn
 
     async def disconnect(self, ws: WebSocket):
         async with self._lock:
-            self.active.discard(ws)
-        logging.info(f"WS disconnected. Total: {len(self.active)}")
+            conn = self._conns.pop(ws, None)
+        if conn:
+            await conn.stop()
+        logging.info(f"WS disconnected. Total: {len(self._conns)}")
 
     async def broadcast(self, message: str):
-        """Send to all clients; silently remove dead connections.
-        NOTE: Do NOT wrap ws.send_text in asyncio.wait_for — cancelling a
-        mid-send WebSocket coroutine corrupts the frame and causes phantom
-        client disconnects. Plain await + except is the correct pattern.
-        """
-        if not self.active:
-            return
+        """Enqueue message for every connected client. Never blocks, never corrupts."""
         async with self._lock:
-            targets = set(self.active)
-        dead = set()
-        for ws in targets:
-            try:
-                await ws.send_text(message)
-            except Exception:
-                dead.add(ws)
-        if dead:
-            async with self._lock:
-                self.active -= dead
+            conns = list(self._conns.values())
+        for conn in conns:
+            conn.enqueue(message)
+
 
 manager = ConnectionManager()
 
@@ -82,23 +110,45 @@ def _serialize_state(state) -> dict:
     """Serialize PortfolioState to a JSON-safe dict, stripping DataFrames."""
     import pandas as pd
 
+    import math
+
     def clean(obj):
         """Recursively clean an object to be JSON-safe."""
         if obj is None:
             return None
-        if isinstance(obj, (str, int, float, bool)):
+        if isinstance(obj, bool):        # bool before int (bool is subclass of int)
+            return obj
+        if isinstance(obj, int):
+            return obj
+        if isinstance(obj, float):
+            # inf/nan crash json.dumps — sanitize them
+            if math.isnan(obj) or math.isinf(obj):
+                return None
+            return obj
+        if isinstance(obj, str):
             return obj
         if isinstance(obj, (list, tuple)):
             return [clean(i) for i in obj]
         if isinstance(obj, dict):
             return {k: clean(v) for k, v in obj.items()}
         if isinstance(obj, pd.DataFrame):
-            return None   # Drop DataFrames entirely
+            return None
         if isinstance(obj, pd.Series):
             return None
         if dataclasses.is_dataclass(obj):
             return clean(dataclasses.asdict(obj))
-        # Fallback for other types (datetime, etc.)
+        # numpy scalar types
+        try:
+            import numpy as np
+            if isinstance(obj, (np.integer,)):
+                return int(obj)
+            if isinstance(obj, (np.floating,)):
+                v = float(obj)
+                return None if (math.isnan(v) or math.isinf(v)) else v
+            if isinstance(obj, np.ndarray):
+                return clean(obj.tolist())
+        except (ImportError, Exception):
+            pass
         try:
             return str(obj)
         except Exception:
@@ -110,12 +160,12 @@ def _serialize_state(state) -> dict:
             "run_id":               state.run_id,
             "started_at":           state.started_at,
             "completed_at":         state.completed_at,
-            "total_portfolio_value":state.total_portfolio_value,
-            "total_cost_basis":     state.total_cost_basis,
-            "total_pnl":            state.total_pnl,
-            "total_pnl_pct":        state.total_pnl_pct,
-            "portfolio_var":        state.portfolio_var,
-            "portfolio_sharpe":     state.portfolio_sharpe,
+            "total_portfolio_value":clean(state.total_portfolio_value),
+            "total_cost_basis":     clean(state.total_cost_basis),
+            "total_pnl":            clean(state.total_pnl),
+            "total_pnl_pct":        clean(state.total_pnl_pct),
+            "portfolio_var":        clean(state.portfolio_var),
+            "portfolio_sharpe":     clean(state.portfolio_sharpe),
             "settings":             clean(state.settings),
             "holdings":             clean(state.holdings),
             "technical_signals":    clean(state.technical_signals),
@@ -129,7 +179,7 @@ def _serialize_state(state) -> dict:
             "recommendations":      clean(state.recommendations),
             "scan_recommendations": clean(state.scan_recommendations),
             "preference_recommendations": clean(state.preference_recommendations),
-            "smart_money_signals": clean(state.smart_money_signals),
+            "smart_money_signals":  clean(state.smart_money_signals),
             "agent_statuses":       clean(state.agent_statuses),
             "agent_logs": {
                 k: v[-5:] for k, v in state.agent_logs.items()
@@ -137,8 +187,8 @@ def _serialize_state(state) -> dict:
             # Slim price_data: only support/resistance levels, no DataFrames
             "price_data": {
                 ticker: {
-                    "support":    data.get("support"),
-                    "resistance": data.get("resistance"),
+                    "support":    clean(data.get("support")),
+                    "resistance": clean(data.get("resistance")),
                 }
                 for ticker, data in state.price_data.items()
                 if isinstance(data, dict)
@@ -253,9 +303,10 @@ async def run_analysis():
             orchestrator = OrchestratorAgent(verbose=True)
 
             async def broadcaster(msg: str):
-                """Throttled broadcaster — max 1 status_update per 200ms."""
-                import time as _time
+                """Throttled broadcaster — max 1 status_update per 200ms.
+                MUST NOT raise — an exception here kills the entire pipeline."""
                 try:
+                    import time as _time
                     parsed = json.loads(msg)
                     if parsed.get("event") == "status_update":
                         now = _time.monotonic()
@@ -264,7 +315,10 @@ async def run_analysis():
                         _broadcast_timestamps["last"] = now
                 except Exception:
                     pass
-                await manager.broadcast(msg)
+                try:
+                    await manager.broadcast(msg)
+                except Exception as bcast_err:
+                    logging.debug(f"Broadcast error (non-fatal): {bcast_err}")
 
             orchestrator.ws_broadcaster = broadcaster
             state = await orchestrator.run()
@@ -290,40 +344,38 @@ async def run_analysis():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    """WebSocket — bulletproof with ping/pong heartbeat & graceful disconnect."""
-    await manager.connect(ws)
+    """WebSocket — queue-based sends, no concurrent write corruption."""
+    conn = await manager.connect(ws)
 
+    # Heartbeat: enqueue pings via queue (never direct ws.send_text from here)
     async def _heartbeat():
-        """Send ping every 25s to keep alive through proxies/firewalls."""
         while True:
             try:
                 await asyncio.sleep(25)
-                await ws.send_text(json.dumps({"event": "ping"}))  # plain await — no wait_for
+                conn.enqueue(json.dumps({"event": "ping"}))
             except Exception:
                 break
 
     heartbeat_task = asyncio.create_task(_heartbeat())
     try:
+        # Initial state goes through the queue too — stays serialized
         if _last_state:
-            await ws.send_text(json.dumps({
+            conn.enqueue(json.dumps({
                 "event": "initial_state",
                 "data":  _serialize_state(_last_state),
             }))
         else:
-            await ws.send_text(json.dumps({
+            conn.enqueue(json.dumps({
                 "event": "ready",
                 "data":  {"message": "🟢 Connected to Antigravity Intelligence. POST /api/analyze to start."},
             }))
 
-        # Keep-alive receive loop — wait_for on receive is safe (no send corruption)
+        # Pure receive loop — we only receive here, never send directly
         while True:
             try:
-                await asyncio.wait_for(ws.receive_text(), timeout=60)
+                await asyncio.wait_for(ws.receive_text(), timeout=90)
             except asyncio.TimeoutError:
-                try:
-                    await ws.send_text(json.dumps({"event": "ping"}))  # plain await
-                except Exception:
-                    break
+                conn.enqueue(json.dumps({"event": "ping"}))
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -334,4 +386,5 @@ async def websocket_endpoint(ws: WebSocket):
 
 
 if __name__ == "__main__":
-    uvicorn.run("api.server:app", host="0.0.0.0", port=8080, reload=False, log_level="info")
+    uvicorn.run("api.server:app", host="0.0.0.0", port=8080, reload=False,
+                log_level="info", ws_ping_interval=None, ws_ping_timeout=None)

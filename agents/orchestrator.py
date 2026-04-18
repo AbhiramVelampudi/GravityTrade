@@ -52,19 +52,42 @@ class OrchestratorAgent:
 
     # ── WebSocket helpers ─────────────────────────────────────────────
     async def _broadcast(self, event: str, data: dict = None):
-        """Push a named event to all WebSocket clients."""
+        """Push a named event to all WebSocket clients. Never raises."""
         if self.ws_broadcaster:
             try:
-                await self.ws_broadcaster(json.dumps({"event": event, "data": data or {}}))
+                msg = json.dumps({"event": event, "data": data or {}},
+                                 default=str, allow_nan=False)
+            except (ValueError, TypeError):
+                # inf/nan in data → strip them and retry
+                import math
+                def _sanitize(o):
+                    if isinstance(o, float) and (math.isnan(o) or math.isinf(o)):
+                        return None
+                    if isinstance(o, dict):
+                        return {k: _sanitize(v) for k, v in o.items()}
+                    if isinstance(o, (list, tuple)):
+                        return [_sanitize(i) for i in o]
+                    return o
+                try:
+                    msg = json.dumps({"event": event, "data": _sanitize(data or {})},
+                                     default=str)
+                except Exception:
+                    return
+            try:
+                await self.ws_broadcaster(msg)
             except Exception:
                 pass
 
     async def _push_statuses(self):
         """Immediately push all current agent statuses — called after every phase/agent."""
-        await self._broadcast("status_update", {
-            "agent_statuses": self.state.agent_statuses,
-            "agent_logs": {k: v[-3:] for k, v in self.state.agent_logs.items()},
-        })
+        try:
+            payload = {
+                "agent_statuses": self.state.agent_statuses,
+                "agent_logs": {k: v[-3:] for k, v in self.state.agent_logs.items()},
+            }
+            await self._broadcast("status_update", payload)
+        except Exception:
+            pass   # never crash the pipeline for a status push
 
     async def _run_agent(self, agent) -> None:
         """Run one agent and immediately push status before AND after."""

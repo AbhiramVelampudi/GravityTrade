@@ -24,13 +24,13 @@ def run_server():
     import uvicorn
     print("\n" + "="*60)
     print("  [*]  ANTIGRAVITY STOCK INTELLIGENCE SYSTEM")
-    print("  [13] Agent MCP Portfolio Analyzer")
+    print("  [16] Agent MCP Portfolio Analyzer")
     print("="*60)
     print(f"\n  Dashboard: http://localhost:8080")
     print(f"  API:       http://localhost:8080/api")
     print(f"  WebSocket: ws://localhost:8080/ws")
     print(f"\n  --> Open http://localhost:8080 in your browser")
-    print(f"  --> Click [Run Analysis] to start all 13 agents")
+    print(f"  --> Click [Run Analysis] to start all 16 agents")
     print("\n" + "="*60 + "\n")
     uvicorn.run(
         "api.server:app",
@@ -38,6 +38,8 @@ def run_server():
         port=8080,
         reload=False,
         log_level="warning",
+        ws_ping_interval=None,    # disable websockets lib auto-ping (we do our own)
+        ws_ping_timeout=None,     # prevents lib from killing connections during heavy CPU phases
     )
 
 
